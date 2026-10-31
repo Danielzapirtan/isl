@@ -1,6 +1,6 @@
 package dev.datacap
 
-import android.net.VpnService
+import android.util.Log
 import java.io.Closeable
 import java.io.DataInputStream
 import java.io.EOFException
@@ -17,7 +17,6 @@ import java.nio.charset.StandardCharsets
 import kotlin.concurrent.thread
 
 internal class LocalSocksServer(
-    private val vpnService: VpnService,
     private val limiter: DownloadRateLimiter,
 ) : Closeable {
     @Volatile
@@ -98,7 +97,6 @@ internal class LocalSocksServer(
         val upstream = Socket()
         var connected = false
         try {
-            if (!vpnService.protect(upstream)) throw IOException("Could not protect upstream socket")
             upstream.connect(InetSocketAddress(host, port), CONNECT_TIMEOUT_MILLIS)
             writeReply(output, REPLY_OK)
             connected = true
@@ -124,7 +122,8 @@ internal class LocalSocksServer(
                 output.write(buffer, 0, count)
                 output.flush()
             }
-        } catch (_: IOException) {
+        } catch (error: IOException) {
+            Log.e(TAG, "Failed to connect through SOCKS", error)
             if (!connected) {
                 try {
                     writeReply(output, REPLY_GENERAL_FAILURE)
@@ -154,7 +153,6 @@ internal class LocalSocksServer(
         var relayThread: Thread? = null
         try {
             relay.bind(InetSocketAddress(LOOPBACK, 0))
-            if (!vpnService.protect(relay)) throw IOException("Could not protect UDP relay")
             relay.soTimeout = UDP_RECEIVE_TIMEOUT_MILLIS
             writeReply(output, REPLY_OK, LOOPBACK.address, relay.localPort)
             relayThread = thread(name = "datacap-socks-udp") {
@@ -307,6 +305,7 @@ internal class LocalSocksServer(
 
     companion object {
         private val LOOPBACK: InetAddress = InetAddress.getByName("127.0.0.1")
+        private const val TAG = "DataCapSocks"
         private const val PORT = 10_808
         private const val SOCKS_VERSION = 5
         private const val NO_AUTH = 0

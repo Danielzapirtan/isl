@@ -68,7 +68,7 @@ class LimiterVpnService : VpnService() {
 
         try {
             val limiter = DownloadRateLimiter(limitBps)
-            val proxy = LocalSocksServer(this, limiter)
+            val proxy = LocalSocksServer(limiter)
             rateLimiter = limiter
             socksServer = proxy
             proxy.start()
@@ -91,6 +91,7 @@ class LimiterVpnService : VpnService() {
 
             val builder = Builder()
                 .setSession("DataCap")
+                .setBlocking(false)
                 .setMtu(1500)
                 .addAddress("198.18.0.1", 15)
                 .addAddress("fc00::1", 126)
@@ -100,6 +101,8 @@ class LimiterVpnService : VpnService() {
                 .addDnsServer("2606:4700:4700::1111")
 
             try {
+                // This package's sockets must bypass the VPN; the native tunnel and
+                // local SOCKS proxy both run under this UID.
                 builder.addDisallowedApplication(packageName)
             } catch (error: android.content.pm.PackageManager.NameNotFoundException) {
                 throw IOException("Could not exclude the app's own upstream sockets", error)
